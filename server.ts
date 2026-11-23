@@ -117,6 +117,10 @@ export function createApiRouter(repo: LibraryRepository): express.Router {
     }
   );
 
+  router.get('/', (_req: Request, res: Response) => {
+    res.json({ ok: true, mode: repo.mode });
+  });
+
   router.use((_req: Request, res: Response) => {
     res.status(404).json({ error: 'API endpoint not found.' });
   });
@@ -147,15 +151,22 @@ async function startServer() {
     }
   );
 
-  if (process.env.NODE_ENV === 'production') {
-    const distDir = path.resolve(__dirname, 'dist');
+  const distDir = path.resolve(__dirname, 'dist');
+  const indexPath = path.join(distDir, 'index.html');
+  const isDevLifecycle =
+    process.env.npm_lifecycle_event === 'dev' ||
+    process.env.NODE_ENV === 'development';
+  const useProductionStatic =
+    process.env.NODE_ENV === 'production' ||
+    (!isDevLifecycle && fs.existsSync(indexPath));
+
+  if (useProductionStatic) {
     app.use(express.static(distDir));
     app.get('*', (_req: Request, res: Response) => {
-      const indexPath = path.join(distDir, 'index.html');
       if (fs.existsSync(indexPath)) {
         res.sendFile(indexPath);
       } else {
-        res.status(404).send('Build output not found.');
+        res.status(404).send('Build output not found. Run "npm run build" first.');
       }
     });
   } else {
@@ -169,18 +180,12 @@ async function startServer() {
 
   app.listen(port, '0.0.0.0', () => {
     console.log(
-      `Library Management Server listening on http://localhost:${port} (storage=${repo.mode})`
+      `Library Management Server (Frontend + API) listening on http://localhost:${port} (mode=${useProductionStatic ? 'production' : 'development'}, storage=${repo.mode})`
     );
   });
 }
 
-const isEntrypoint =
-  process.argv[1] &&
-  path.resolve(process.argv[1]) === path.resolve(__filename);
-
-if (isEntrypoint) {
-  startServer().catch((err) => {
-    console.error('Failed to start server:', err);
-    process.exit(1);
-  });
-}
+startServer().catch((err) => {
+  console.error('Failed to start server:', err);
+  process.exit(1);
+});
